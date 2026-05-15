@@ -127,8 +127,8 @@ data "aws_iam_policy_document" "s3_vpc_endpoint_policy" {
         "arn:${local.computed_aws_partition}:s3:::${var.resource_prefix}-catalog-${module.databricks_mws_workspace.workspace_id}/*",
         "arn:${local.computed_aws_partition}:s3:::${var.resource_prefix}-catalog-${module.databricks_mws_workspace.workspace_id}"
       ],
-      [for s in var.vpc_additional_s3_resources : "arn:${local.computed_aws_partition}:s3:::${s}/*"],
-      [for s in var.vpc_additional_s3_resources : "arn:${local.computed_aws_partition}:s3:::${s}"]
+      [for s in var.vpc_additional_s3_buckets : "arn:${local.computed_aws_partition}:s3:::${s}/*"],
+      [for s in var.vpc_additional_s3_buckets : "arn:${local.computed_aws_partition}:s3:::${s}"]
     )
 
     condition {
