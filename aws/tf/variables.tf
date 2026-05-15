@@ -524,6 +524,12 @@ variable "vpc_cidr_range" {
   default     = null
 }
 
+variable "vpc_additional_s3_resources" {
+  description = "List of additional S3 resources to allow access to in the VPC."
+  type        = list(string)
+  default     = []
+}
+
 # Workspace API PrivateLink Endpoint configuration
 # This variable allows mapping regions to multiple endpoint properties:
 # - primary_endpoint: The main endpoint service name (required)

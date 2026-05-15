@@ -93,10 +93,10 @@ data "aws_iam_policy_document" "s3_vpc_endpoint_policy" {
       identifiers = ["*"]
     }
 
-    resources = [
+    resources = concat([
       "arn:${local.computed_aws_partition}:s3:::${var.resource_prefix}-workspace-root-storage/*",
       "arn:${local.computed_aws_partition}:s3:::${var.resource_prefix}-workspace-root-storage"
-    ]
+    ], var.vpc_additional_s3_resources)
 
     condition {
       test     = "StringEquals"
