@@ -106,7 +106,7 @@ data "aws_iam_policy_document" "s3_vpc_endpoint_policy" {
   }
 
   statement {
-    sid    = "Grant access to Unity Catalog Workspace Catalog Bucket"
+    sid    = "Grant access to Unity Catalog Workspace Catalog Buckets"
     effect = "Allow"
     actions = [
       "s3:GetObject",
@@ -122,10 +122,14 @@ data "aws_iam_policy_document" "s3_vpc_endpoint_policy" {
       identifiers = ["*"]
     }
 
-    resources = [
-      "arn:${local.computed_aws_partition}:s3:::${var.resource_prefix}-catalog-${module.databricks_mws_workspace.workspace_id}/*",
-      "arn:${local.computed_aws_partition}:s3:::${var.resource_prefix}-catalog-${module.databricks_mws_workspace.workspace_id}"
-    ]
+    resources = concat(
+      [
+        "arn:${local.computed_aws_partition}:s3:::${var.resource_prefix}-catalog-${module.databricks_mws_workspace.workspace_id}/*",
+        "arn:${local.computed_aws_partition}:s3:::${var.resource_prefix}-catalog-${module.databricks_mws_workspace.workspace_id}"
+      ],
+      [for s in var.vpc_additional_s3_buckets : "arn:${local.computed_aws_partition}:s3:::${s}/*"],
+      [for s in var.vpc_additional_s3_buckets : "arn:${local.computed_aws_partition}:s3:::${s}"]
+    )
 
     condition {
       test     = "StringEquals"
