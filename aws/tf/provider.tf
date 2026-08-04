@@ -33,9 +33,12 @@ provider "aws" {
   skip_requesting_account_id  = local.is_serverless
   skip_metadata_api_check     = local.is_serverless
   default_tags {
-    tags = {
-      Resource = var.resource_prefix
-    }
+    tags = merge(
+      {
+        Resource = var.resource_prefix
+      },
+      var.custom_tags
+    )
   }
 }
 

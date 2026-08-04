@@ -1,3 +1,9 @@
+variable "custom_tags" {
+  description = "Additional custom tags applied to the cluster."
+  type        = map(string)
+  default     = {}
+}
+
 variable "enable_compliance_security_profile" {
   description = "Flag to enable the compliance security profile."
   type        = bool
