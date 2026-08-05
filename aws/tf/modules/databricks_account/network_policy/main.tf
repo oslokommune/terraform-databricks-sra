@@ -14,6 +14,55 @@ resource "databricks_account_network_policy" "restrictive_network_policy" {
       policy_enforcement = {
         enforcement_mode = "ENFORCED"
       }
+      # When the Security Analysis Tool is enabled, allow list PyPI so SAT can install its dependencies.
+      allowed_internet_destinations = var.enable_security_analysis_tool ? [
+        {
+          destination               = "pypi.org"
+          internet_destination_type = "DNS_NAME"
+        },
+        {
+          destination               = "files.pythonhosted.org"
+          internet_destination_type = "DNS_NAME"
+        },
+        {
+          destination               = "release-assets.githubusercontent.com"
+          internet_destination_type = "DNS_NAME"
+        },
+        {
+          destination               = "github.com"
+          internet_destination_type = "DNS_NAME"
+        },
+        {
+          destination               = "raw.githubusercontent.com"
+          internet_destination_type = "DNS_NAME"
+        }
+      ] : []
+    }
+  }
+
+  # Optional IP-based ingress restriction. When context_based_ingress_ip_acl is non-empty, public access
+  # to the workspace is restricted to the listed IPs/CIDRs; otherwise public access is left unrestricted.
+  # NOTE: Verify that all IPs are correct before enabling this feature to prevent a lockout scenario.
+  ingress = {
+    # Explicitly allow private access from all VPC endpoints registered in the account, matching the
+    # private access settings posture (private_access_level = "ACCOUNT"). The API now populates
+    # private_access server-side when unset, which the provider reports as an inconsistent result after
+    # apply ("was null, but now ..."); setting it explicitly avoids that error.
+    private_access = {
+      restriction_mode = "ALLOW_ALL_REGISTERED_ENDPOINTS"
+    }
+    public_access = {
+      restriction_mode = length(var.context_based_ingress_ip_acl) > 0 ? "RESTRICTED_ACCESS" : "FULL_ACCESS"
+      allow_rules = length(var.context_based_ingress_ip_acl) > 0 ? [
+        {
+          label = "${var.resource_prefix}-ingress-allow"
+          origin = {
+            included_ip_ranges = {
+              ip_ranges = var.context_based_ingress_ip_acl
+            }
+          }
+        }
+      ] : []
     }
   }
 }

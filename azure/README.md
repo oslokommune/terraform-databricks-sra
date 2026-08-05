@@ -9,7 +9,7 @@
 5. Run `terraform init`
 6. Run `terraform validate`
 7. From `tf` directory, run `terraform plan -var-file <YOUR_VAR_FILE>`, if edited directly, the command would be `terraform plan -var-file template.tfvars.example`
-8. Run `terraform apply -var-file <YOUR_VAR_FILE`
+8. Run `terraform apply -var-file <YOUR_VAR_FILE>`
 
 ## Note on provider initialization with Azure CLI
 If you are using [Azure CLI Authentication](https://registry.terraform.io/providers/databricks/databricks/latest/docs#authenticating-with-azure-cli),
@@ -63,12 +63,14 @@ In various .tf scripts, we have included direct links to the Databricks Terrafor
 allows Databricks customers to exercise more control over your network configures to comply with specific cloud security and governance standards that a
 customer's organization may require.
 
+- **Vnet Encryption**: [Azure VNET encryption](https://learn.microsoft.com/en-us/azure/virtual-network/virtual-network-encryption-overview) transparently encrypts traffic between supported VM SKUs on the spoke VNET. Off by default; opt in via `workspace_vnet.encryption_enabled = true`. Force-enabled when `workspace_security_compliance.compliance_security_profile_enabled = true`. The spoke VNET is created with `AllowUnencrypted` enforcement so workloads on SKUs that do not support encryption continue to function.
+
 - **Private Endpoints**: Using Private Link technology, a [private endpoint](https://learn.microsoft.com/en-us/azure/private-link/private-endpoint-overview) is a service that connects a customer's Vnet
 to Azure services without traversing public IP addresses.
 
 - **Private Link Connectivity**: Private Link provides a private network route from one Azure service to another.
 [Private Link](https://learn.microsoft.com/en-us/azure/private-link/private-link-overview) is configured
-so that communication between the customer's data plane and Databricks control plane does not traverse public IP addresses. Both front-end and back-end Private Link are set up in this template according
+so that communication between the customer's data plane and Databricks control plane does not traverse public IP addresses. Back-end Private Link is set up in this template according
 to the [Simplified Private Link](https://learn.microsoft.com/en-us/azure/databricks/security/network/classic/private-link-simplified) setup.
 
 - **Unity Catalog**:  [Unity Catalog](https://learn.microsoft.com/en-us/azure/databricks/data-governance/unity-catalog) is a unified governance solution for all data and AI assets including

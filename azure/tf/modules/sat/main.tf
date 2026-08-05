@@ -2,24 +2,40 @@ resource "databricks_secret" "client_secret" {
   key          = "client-secret"
   string_value = var.service_principal_client_secret
   scope        = module.sat.secret_scope_id
+
+  provider_config {
+    workspace_id = var.workspace_id
+  }
 }
 
 resource "databricks_secret" "subscription_id" {
   key          = "subscription-id"
   string_value = var.subscription_id
   scope        = module.sat.secret_scope_id
+
+  provider_config {
+    workspace_id = var.workspace_id
+  }
 }
 
 resource "databricks_secret" "tenant_id" {
   key          = "tenant-id"
   string_value = var.tenant_id
   scope        = module.sat.secret_scope_id
+
+  provider_config {
+    workspace_id = var.workspace_id
+  }
 }
 
 resource "databricks_secret" "client_id" {
   key          = "client-id"
   string_value = var.service_principal_client_id
   scope        = module.sat.secret_scope_id
+
+  provider_config {
+    workspace_id = var.workspace_id
+  }
 }
 
 data "databricks_group" "admins" {
@@ -40,14 +56,22 @@ resource "databricks_grant" "sat_sp_catalog" {
   principal  = databricks_service_principal.sp.application_id
   privileges = ["ALL_PRIVILEGES"]
   catalog    = var.catalog_name
+
+  provider_config {
+    workspace_id = var.workspace_id
+  }
 }
 
 module "sat" {
-  source = "git::https://github.com/databricks-industry-solutions/security-analysis-tool.git//terraform/common?ref=v0.4.0"
+  source = "git::https://github.com/databricks-industry-solutions/security-analysis-tool.git//terraform/common?ref=v0.6.0"
 
   account_console_id   = var.databricks_account_id
   analysis_schema_name = "${var.catalog_name}.${var.schema_name}"
   proxies              = var.proxies
   run_on_serverless    = var.run_on_serverless
   workspace_id         = var.workspace_id
+
+  providers = {
+    databricks = databricks.workspace
+  }
 }

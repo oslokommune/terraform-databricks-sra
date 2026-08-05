@@ -21,9 +21,10 @@ This architecture includes specific functionalities that may affect certain use 
 
 Terraform customizations are available to support the baseline deployment of the Security Reference Architecture (SRA). These customizations are organized by provider:
 
-- **Workspace**: Databricks workspace provider.
+- **Workspace**: Databricks workspace provider (e.g. admin configurations, IP access lists, the Security Analysis Tool, audit log alerting, read-only external locations).
+- **AWS**: AWS provider customer-side infrastructure (e.g. Serverless PrivateLink to Git, Kafka, RDS, or S3 — an internal NLB and VPC endpoint service that lets serverless compute reach resources in your network).
 
-These extensions can be found in the top-level customization folder.
+These extensions can be found in the top-level [customizations](customizations/customizations.md) folder.
 
 ## SRA Component Breakdown and Description
 
@@ -33,12 +34,14 @@ Various `.tf` scripts contain direct links to the Databricks Terraform documenta
 
 ### Network Configuration
 
-Choose from two network configurations for your workspaces: **isolated** or **custom**.
+The `network_configuration` variable applies to `HYBRID` workspaces only; serverless-only workspaces (`compute_mode = "SERVERLESS"`) create no customer VPC and ignore it. For `HYBRID`, choose from two network configurations for your workspaces: **isolated** or **custom**.
 
 - **Isolated (Default)**: Opting for 'isolated' prevents any traffic to the public internet, limiting traffic to AWS private endpoints for AWS services or the Databricks control plane.
-   - **NOTE**: A Unity Catalog-only configuration is required for any clusters running without access to the public internet. Please see the official documentation [here](https://docs.databricks.com/aws/en/data-governance/unity-catalog/disable-hms).
+   - **NOTE**: SRA disables legacy Hive metastore access on the workspace (`disable_legacy_access = true`), so all data access goes through Unity Catalog. This is required anyway for clusters with no public internet access (the isolated default), which can't reach the legacy built-in metastore.
 
 - **Custom**: Selecting 'custom' allows you to specify your own VPC ID, subnet IDs, security group IDs, and PrivateLink endpoint IDs. This mode is recommended when networking assets are created in different pipelines or pre-assigned by a centralized infrastructure team.
+    - **Bring AWS PrivateLink endpoint IDs**: Set `custom_general_access_vpce_id`, `custom_scc_relay_vpce_id`, and (optionally) `custom_service_direct_vpce_id`. SRA will register them with Databricks on your behalf.
+    - **Bring already-registered Databricks MWS endpoint IDs**: Set `custom_general_access_mws_vpce_id`, `custom_scc_relay_mws_vpce_id`, and (optionally) `custom_service_direct_mws_vpce_id`. Use this path when the VPC endpoints have already been registered with the Databricks account (e.g., for sharing across multiple workspaces in the same VPC). SRA skips the registration step and wires these IDs straight into the workspace network configuration.
 
 ### Core AWS Components
 
@@ -60,6 +63,8 @@ Choose from two network configurations for your workspaces: **isolated** or **cu
 
 - **Back-end AWS PrivateLink Connectivity**: AWS PrivateLink provides a private network route from one AWS environment to another. [Back-end PrivateLink](https://docs.databricks.com/administration-guide/cloud-configurations/aws/privatelink.html#overview) is configured so that communication between the customer's classic compute plane and the Databricks control plane does not traverse public IP addresses. This is accomplished through Databricks-specific interface VPC endpoints. Front-end PrivateLink is also available for customers to keep user traffic over the AWS backbone, though front-end PrivateLink is not included in this Terraform template.
 
+- **Service Direct (opt-in)**: A front-end PrivateLink interface VPC endpoint that enables clients to reach the workspace UI/API privately. Service Direct endpoints are commonly shared across workspaces in the same VPC, so SRA does not create one by default. Set `create_service_direct_vpce = true` to have SRA create and register a new Service Direct endpoint for this deployment. Not available in GovCloud regions.
+
 - **Scoped-down IAM Policy for the Databricks cross-account role**: A [cross-account role](https://docs.databricks.com/administration-guide/account-api/iam-role.html) is needed for users, jobs, and other third-party tools to spin up Databricks clusters within the customer's classic compute plane. This role can be scoped down to function only within the classic compute plane's VPC, subnets, and security group.
 
 - **AWS KMS Keys**: Three AWS KMS keys are created to support the following functionalities:
@@ -80,12 +85,32 @@ Choose from two network configurations for your workspaces: **isolated** or **cu
 
 - **Restrictive Network Policy**: [Network policies](https://docs.databricks.com/aws/en/security/network/serverless-network-security/manage-network-policies) provide egress controls for serverless compute. A restrictive network policy is implemented on the workspace, allowing outbound traffic only to required data buckets.
 
+- **Serverless Private Connectivity**: [Private endpoint rules](https://docs.databricks.com/aws/en/security/network/serverless-network-security/pl-to-internal-network) let serverless compute reach resources in your AWS account (e.g. a VPC endpoint service in front of a database, or S3 buckets) over PrivateLink instead of the public network. No rules are created by default — in-region S3 access is already private through the network connectivity configuration's managed gateway endpoints. Add rules with the *serverless_private_endpoint_rules* variable; rules complement the network policy (the policy controls what egress is allowed, the rule provides the private path).
+   - **NOTE**: A rule targeting your own VPC endpoint service stays pending until you accept the connection request on the endpoint service in AWS.
+
+### Serverless-Only Workspace (optional)
+
+Set `compute_mode = "SERVERLESS"` to deploy a serverless-only workspace instead of the classic customer-managed VPC deployment. Serverless workspaces run entirely on Databricks-managed compute and storage, and this variant creates **no AWS resources at all** — no AWS account or AWS credentials are required. The customer VPC, PrivateLink endpoints, cross-account IAM role, workspace root S3 bucket, workspace customer-managed keys, workspace catalog storage, and S3 audit log delivery are not created. The restrictive network policy, network connectivity configuration, and Unity Catalog metastore resources still apply.
+
+Notes for serverless-only deployments:
+- The workspace uses its auto-created workspace catalog backed by Databricks default storage instead of the customer-managed isolated catalog.
+- Audit events should be monitored via [system tables](https://docs.databricks.com/en/admin/system-tables/index.html) (see the `system_tables_audit_log` customization) since S3 audit log delivery requires a customer-owned bucket. Off-platform audit log delivery is available with `compute_mode = "HYBRID"`.
+- Classic-compute features (the example cluster, enhanced security monitoring, and automatic cluster update) are skipped or not applicable.
+- Serverless-only workspaces are not available in GovCloud regions; deployments to `us-gov-west-1` must use `compute_mode = "HYBRID"`.
+
+### Optional Naming Overrides
+
+By default the workspace and Unity Catalog metastore are named from `resource_prefix` and `region`. Two optional tfvars let you override those names without changing `resource_prefix`:
+
+- `workspace_display_name`: Human-readable workspace name shown in the Databricks UI. Defaults to `resource_prefix` when unset.
+- `custom_metastore_name`: Name of the Unity Catalog metastore created by this deployment. Defaults to `${var.region}-unity-catalog` when unset. Only used when `metastore_exists = false`.
+
 ---
 
 ## Critical Next Steps
 
 - **Implement a Front-End Mitigation Strategy**:
-    - [IP Access Lists](https://docs.databricks.com/en/security/network/front-end/ip-access-list.html): The Terraform code for enabling IP access lists can be found in the customization folder.
+    - **IP-based ingress restriction**: Restrict workspace access to a set of IPs/CIDRs by setting the `context_based_ingress_ip_acl` variable, which adds allow rules to the workspace [network policy](https://docs.databricks.com/aws/en/security/network/serverless-network-security/manage-network-policies) (context-based ingress). Leave it empty to apply no restriction. **NOTE:** Verify all IPs are correct before enabling to avoid a lockout.
     - [Front-End PrivateLink](https://docs.databricks.com/en/security/network/classic/privatelink.html#step-5-configure-internal-dns-to-redirect-user-requests-to-the-web-application-front-end).
 
 - **Implement Single Sign-On, Multi-Factor Authentication, and SCIM Provisioning**: Most enterprise deployments enable [Single Sign-On (SSO)](https://docs.databricks.com/administration-guide/users-groups/single-sign-on/index.html) and multi-factor authentication (MFA). For user management, we recommend integrating [SCIM (System for Cross-domain Identity Management)](https://docs.databricks.com/dev-tools/api/latest/scim/index.html) with your account console.
@@ -116,15 +141,16 @@ This section provides additional security recommendations to help maintain a str
 
 1. Clone this repository.
 2. Install [Terraform](https://developer.hashicorp.com/terraform/downloads).
-3. Decide which [operation mode](https://github.com/databricks/terraform-databricks-sra/tree/main/aws/tf#operation-mode) you'd like to use.
-4. Fill out `main.tf`.
-5. Fill out `template.tfvars.example` and rename the file to `template.tfvars` by removing `.example`.
-6. Configure the [AWS](https://registry.terraform.io/providers/hashicorp/aws/latest/docs#authentication-and-configuration) and [Databricks](https://registry.terraform.io/providers/databricks/databricks/latest/docs#authentication) provider authentication.
-7. Change directory into `tf`.
-8. Run `terraform init`.
-9. Run `terraform validate`.
-10. From the `tf` directory, run `terraform plan -var-file ../example.tfvars`.
-11. Run `terraform apply -var-file ../example.tfvars`.
+3. Decide which compute mode you'd like to use: `HYBRID` (classic customer-managed VPC workspace, with serverless available alongside) or `SERVERLESS` (serverless-only, no AWS resources created). See [Serverless-Only Workspace](#serverless-only-workspace-optional) above. `SERVERLESS` is not available in GovCloud.
+4. For `HYBRID`, decide which network configuration you'd like to use: `isolated` or `custom`. See [Network Configuration](#network-configuration) above.
+5. Change directory into `tf`.
+6. Copy the example tfvars to an environment-specific file, keeping the `.example` untouched as a reference: `cp template.tfvars.example dev.tfvars` (repeat for other environments, e.g. `prod.tfvars`). Fill out your new `dev.tfvars`.
+7. Configure the [AWS](https://registry.terraform.io/providers/hashicorp/aws/latest/docs#authentication-and-configuration) and [Databricks](https://registry.terraform.io/providers/databricks/databricks/latest/docs#authentication) provider authentication.
+8. (Optional) Use a per-environment [Terraform workspace](https://developer.hashicorp.com/terraform/language/state/workspaces) to keep separate state for each `.tfvars` file: `terraform workspace new dev`.
+9. Run `terraform init`.
+10. Run `terraform validate`.
+11. Run `terraform plan -var-file=dev.tfvars`.
+12. Run `terraform apply -var-file=dev.tfvars`.
 
 ---
 

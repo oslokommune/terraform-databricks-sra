@@ -2,66 +2,251 @@ variable "databricks_account_id" {
   type        = string
   description = "(Required) The Databricks account ID target for account-level operations"
 }
+
+variable "databricks_metastore_id" {
+  type        = string
+  default     = null
+  description = "(Optional) Metastore ID to use for all workspaces created, required if create_hub is false"
+
+  validation {
+    condition     = var.create_hub ? true : var.databricks_metastore_id != null
+    error_message = "If var.create_hub is false, you must provide databricks_metastore_id"
+  }
+}
+
 variable "location" {
   type        = string
   description = "(Required) The Azure region for the hub and spoke deployment"
 }
 
+variable "create_hub" {
+  type        = bool
+  description = "(Optional) Whether to create the hub infrastructure. If false, hub configuration must be provided via workspace_config and spoke_config."
+  default     = true
+}
+
 variable "hub_vnet_cidr" {
   type        = string
-  description = "(Required) The CIDR block for the hub Virtual Network"
+  description = "(Optional) The CIDR block for the hub Virtual Network - required if create_hub is true"
+  default     = ""
+  validation {
+    condition     = var.create_hub ? length(var.hub_vnet_cidr) > 0 : true
+    error_message = "hub_vnet_cidr is required if create_hub is true"
+  }
+}
+
+variable "existing_hub_vnet" {
+  type = object({
+    route_table_id = string
+    vnet_id        = string
+  })
+  description = "(Optional) Existing hub VNET details, required if create_hub is false"
+  default     = null
 }
 
 variable "hub_resource_suffix" {
   type        = string
-  description = "(Required) Resource suffix for naming resources in hub"
-}
-
-variable "public_repos" {
-  type        = list(string)
-  description = "(Optional) List of public repository IP addresses to allow access to."
-  default     = ["python.org", "*.python.org", "pypi.org", "*.pypi.org", "pythonhosted.org", "*.pythonhosted.org", "cran.r-project.org", "*.cran.r-project.org", "r-project.org", "management.azure.com", "login.microsoftonline.com"]
-
+  description = "(Optional) Resource suffix for naming resources in hub - required if create_hub is true"
+  default     = ""
   validation {
-    condition     = var.sat_configuration.enabled && !var.sat_configuration.run_on_serverless ? length(setsubtract(["management.azure.com", "login.microsoftonline.com", "python.org", "pypi.org", "pythonhosted.org"], var.public_repos)) == 0 : true
-    error_message = "Since SAT is enabled, you must include SAT-required URLs in the hub_allowed_urls variable."
+    condition     = var.create_hub ? length(var.hub_resource_suffix) > 0 : true
+    error_message = "hub_resource_suffix is required if create_hub is true"
+  }
+  validation {
+    condition     = !strcontains(var.hub_resource_suffix, "-")
+    error_message = "hub_resource_suffix cannot contain dashes (-)."
   }
 }
 
+# ------------------------------------------------------------------
+# The below variables control what URLs workspaces can access on the internet. By default, no workspace can access the
+# internet at all. Note that this means that SAT will not work by default unless the required URLs are added (see below)
+#
+# Common package registries: ["python.org", "*.python.org", "pypi.org", "*.pypi.org", "pythonhosted.org", "*.pythonhosted.org", "cran.r-project.org", "*.cran.r-project.org", "r-project.org", ]
+# Scala/Java (Maven Central): ["repo1.maven.org", "*.maven.org", "repo.maven.apache.org", "*.maven.apache.org"]
+#   (add "repos.spark-packages.org" if installing Spark Packages, which Databricks also searches by default)
+# SAT Required URLs (classic): ["management.azure.com", "login.microsoftonline.com", "python.org", "*.python.org", "pypi.org", "*.pypi.org", "pythonhosted.org", "*.pythonhosted.org"]
+# SAT Required URLs (serverless): ["management.azure.com", "login.microsoftonline.com", "python.org", "pypi.org", "pythonhosted.org"]
+# Note: This also applies to classic compute in the WEBAUTH workspace
+variable "allowed_fqdns" {
+  type        = list(string)
+  description = "(Optional) List of FQDNs to allow from spoke workspace."
+  default     = []
+  validation {
+    condition     = var.sat_configuration.enabled && !var.sat_configuration.run_on_serverless ? length(setsubtract(["management.azure.com", "login.microsoftonline.com", "python.org", "*.python.org", "pypi.org", "*.pypi.org", "pythonhosted.org", "*.pythonhosted.org"], var.allowed_fqdns)) == 0 : true
+    error_message = "Since SAT is enabled and is not running on serverless, you must include SAT-required URLs in the allowed_fqdns variable."
+  }
+}
+
+# This is for allowing the hub workspace to access a separate list of URLs from serverless (e.g. for SAT)
 variable "hub_allowed_urls" {
   type        = set(string)
-  description = "(Optional) List of URLs to allow the hub workspace access to."
-  default     = ["management.azure.com", "login.microsoftonline.com", "python.org", "pypi.org", "pythonhosted.org"]
+  description = "(Optional) List of URLs to allow serverless compute in the hub (webauth) workspace access to."
+  default     = []
 
   validation {
     condition     = var.sat_configuration.enabled && var.sat_configuration.run_on_serverless ? length(setsubtract(["management.azure.com", "login.microsoftonline.com", "python.org", "pypi.org", "pythonhosted.org"], var.hub_allowed_urls)) == 0 : true
-    error_message = "Since SAT is enabled, you must include SAT-required URLs in the hub_allowed_urls variable."
+    error_message = "Since SAT is enabled and running on serverless you must include SAT-required URLs in the hub_allowed_urls variable."
+  }
+}
+# ------------------------------------------------------------------
+# Workspace Variables
+variable "create_workspace_resource_group" {
+  type        = string
+  description = "(Optional) Should a resource group be created for this workspace? If false, resource_group_name must be provided."
+  default     = true
+}
+
+variable "existing_resource_group_name" {
+  type        = string
+  description = "(Optional) Existing resource group name, if using one"
+  default     = null
+}
+
+variable "resource_suffix" {
+  type        = string
+  description = "(Required) Suffix to use for naming Azure resources (e.g. dbx-dev, sra, etc.)"
+}
+
+variable "create_workspace_vnet" {
+  type        = bool
+  description = "(Optional) Whether to create SRA-managed workspace VNET. If false, workspace_vnet must be provided."
+  default     = true
+}
+
+variable "workspace_vnet" {
+  type = object({
+    cidr               = string
+    new_bits           = optional(number, null)
+    encryption_enabled = optional(bool, false)
+  })
+  description = "(Optional) Spoke network configuration - required when create_workspace_vnet is true. encryption_enabled toggles Azure VNET encryption (AllowUnencrypted enforcement) on the spoke VNET; it is force-enabled when workspace_security_compliance.compliance_security_profile_enabled is true."
+  default     = null
+
+  validation {
+    condition     = var.create_workspace_vnet ? var.workspace_vnet != null : true
+    error_message = "workspace_vnet must be provided when create_workspace_vnet is true"
+  }
+  validation {
+    condition     = !var.create_workspace_vnet ? var.workspace_vnet == null : true
+    error_message = "workspace_vnet must not be provided when create_workspace_vnet is false"
   }
 }
 
-variable "spoke_config" {
-  type = map(object(
-    {
-      resource_suffix          = string
-      cidr                     = string
-      tags                     = map(string)
-      is_unity_catalog_enabled = optional(bool, true)
-      storage_account_name     = optional(string, null)
-    }
-  ))
-  description = "(Required) List of spoke configurations"
+variable "existing_workspace_vnet" {
+  type = object({
+    network_configuration = object({
+      virtual_network_id                                   = string
+      private_subnet_id                                    = string
+      public_subnet_id                                     = string
+      private_endpoint_subnet_id                           = string
+      private_subnet_network_security_group_association_id = string
+      public_subnet_network_security_group_association_id  = string
+    })
+    dns_zone_ids = object({
+      backend = string
+      dfs     = string
+      blob    = string
+    })
+  })
+  description = "(Optional) Existing network configuration - required when create_workspace_vnet is false"
+  default     = null
+
+  validation {
+    condition     = !var.create_workspace_vnet ? var.existing_workspace_vnet != null : true
+    error_message = "existing_workspace_vnet must be provided when create_workspace_vnet is false"
+  }
+
+  validation {
+    condition     = var.create_workspace_vnet ? var.existing_workspace_vnet == null : true
+    error_message = "existing_workspace_vnet should only be provided when create_workspace_vnet is false"
+  }
+}
+
+variable "existing_ncc_id" {
+  type        = string
+  description = "(Optional) ID of an existing NCC to use, required if create_hub is false"
+  default     = null
+
+  validation {
+    condition     = var.create_hub ? true : var.existing_ncc_id != null
+    error_message = "If create_hub is false, then you must provide existing_ncc_id"
+  }
+}
+
+variable "existing_ncc_name" {
+  type        = string
+  description = "(Optional) Name of NCC to use"
+  default     = null
+}
+
+variable "existing_network_policy_id" {
+  type        = string
+  description = "(Optional) ID of the network policy to use. Required if create_hub is false and create_spoke_network_policy is false."
+  default     = null
+
+  validation {
+    condition     = var.create_hub ? true : (var.create_spoke_network_policy || var.existing_network_policy_id != null)
+    error_message = "If create_hub is false, you must either provide existing_network_policy_id or set create_spoke_network_policy to true."
+  }
+
+  validation {
+    condition     = var.create_spoke_network_policy ? var.existing_network_policy_id == null : true
+    error_message = "existing_network_policy_id must not be provided when create_spoke_network_policy is true. The network policy will be managed by SRA."
+  }
+}
+
+variable "existing_cmk_ids" {
+  type = object({
+    key_vault_id            = string
+    managed_disk_key_id     = string
+    managed_services_key_id = string
+  })
+  description = "(Optional) Existing CMK IDs - required when create_hub is false and cmk_enabled is true"
+  default     = null
+
+  validation {
+    condition     = !var.create_hub && var.cmk_enabled ? var.existing_cmk_ids != null : true
+    error_message = "existing_cmk_ids must be provided when create_hub is false and cmk_enabled is true"
+  }
+  validation {
+    condition     = var.create_hub ? var.existing_cmk_ids == null : true
+    error_message = "existing_cmk_ids must not be provided when create_hub is true"
+  }
+}
+
+variable "cmk_enabled" {
+  type        = bool
+  description = "(Optional) Whether to enable customer-managed keys (CMK) for workspace encryption. When enabled, managed disks and services will be encrypted with customer-managed keys."
+  default     = true
+}
+
+variable "workspace_security_compliance" {
+  type = object({
+    automatic_cluster_update_enabled      = optional(bool, null)
+    compliance_security_profile_enabled   = optional(bool, null)
+    compliance_security_profile_standards = optional(list(string), [])
+    enhanced_security_monitoring_enabled  = optional(bool, null)
+  })
+  description = "(Optional) Enhanced security compliance configuration for the workspace"
+  default     = null
+
+  validation {
+    condition     = var.workspace_security_compliance != null && length(var.workspace_security_compliance.compliance_security_profile_standards) > 0 ? var.workspace_security_compliance.compliance_security_profile_enabled == true : true
+    error_message = "If a compliance standard is provided in var.workspace_security_compliance.compliance_security_profile_standards, var.workspace_security_compliance.compliance_security_profile_enabled must be true."
+  }
+}
+
+variable "workspace_name_overrides" {
+  type        = map(string)
+  description = "(Optional) Override names for workspace resources. Keys should match naming module outputs."
+  default     = {}
 }
 
 variable "tags" {
   type        = map(string)
   description = "(Optional) Map of tags to attach to resources"
   default     = {}
-}
-
-variable "databricks_metastore_id" {
-  type        = string
-  default     = ""
-  description = "Required if is_unity_catalog_enabled = false"
 }
 
 variable "subscription_id" {
@@ -71,10 +256,9 @@ variable "subscription_id" {
 
 variable "sat_configuration" {
   type = object({
-    enabled           = optional(bool, true)
+    enabled           = optional(bool, false)
     schema_name       = optional(string, "sat")
     catalog_name      = optional(string, "sat")
-    resource_suffix   = optional(string, "null")
     proxies           = optional(map(any), {})
     run_on_serverless = optional(bool, false)
   })
@@ -102,4 +286,57 @@ variable "sat_force_destroy" {
   type        = bool
   default     = false
   description = "Used to allow Terraform to force destroy the SAT catalog. This is only used for testing SRA."
+}
+
+variable "metastore_force_destroy" {
+  type        = bool
+  default     = false
+  description = "Used to allow Terraform to force destroy the metastore. This is only used for testing SRA."
+}
+
+variable "catalog_force_destroy" {
+  type        = bool
+  default     = false
+  description = "Used to allow Terraform to force destroy the catalog. This is only used for testing SRA."
+}
+
+# ------------------------------------------------------------------
+# Spoke Firewall Rules (BYO Hub with firewall management)
+# These variables are used when create_hub = false but you still want
+# SRA to manage firewall rules for spoke workspaces on an existing firewall.
+variable "create_spoke_firewall_rules" {
+  type        = bool
+  description = "(Optional) Whether to create firewall rules for spoke workspaces when using a BYO hub. Only valid when create_hub is false."
+  default     = false
+
+  validation {
+    condition     = var.create_spoke_firewall_rules ? !var.create_hub : true
+    error_message = "create_spoke_firewall_rules can only be true when create_hub is false. When create_hub is true, firewall rules are managed by the hub module."
+  }
+}
+
+variable "existing_firewall_policy_id" {
+  type        = string
+  description = "(Optional) The ID of the existing Azure Firewall Policy to attach spoke rules to. Required when create_spoke_firewall_rules is true."
+  default     = null
+
+  validation {
+    condition     = var.create_spoke_firewall_rules ? var.existing_firewall_policy_id != null : true
+    error_message = "existing_firewall_policy_id is required when create_spoke_firewall_rules is true."
+  }
+}
+
+# ------------------------------------------------------------------
+# Spoke Network Policy (BYO Hub with serverless management)
+# These variables are used when create_hub = false but you still want
+# SRA to manage network policies for spoke serverless compute.
+variable "create_spoke_network_policy" {
+  type        = bool
+  description = "(Optional) Whether to create a network policy for spoke serverless compute when using a BYO hub. Only valid when create_hub is false."
+  default     = false
+
+  validation {
+    condition     = var.create_spoke_network_policy ? !var.create_hub : true
+    error_message = "create_spoke_network_policy can only be true when create_hub is false. When create_hub is true, network policies are managed by the hub module."
+  }
 }
