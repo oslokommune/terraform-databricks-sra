@@ -1,7 +1,7 @@
 # Security group for privatelink - skipped in custom operation mode
 
 resource "aws_security_group" "privatelink" {
-  count  = var.network_configuration != "custom" ? 1 : 0
+  count  = var.network_configuration != "custom" && !local.is_serverless ? 1 : 0
   name   = "${var.resource_prefix}-privatelink-sg"
   vpc_id = module.vpc[0].vpc_id
 
@@ -74,7 +74,7 @@ resource "aws_security_group" "privatelink" {
 
 # Restrictive S3 endpoint policy:
 data "aws_iam_policy_document" "s3_vpc_endpoint_policy" {
-  count = var.network_configuration != "custom" ? 1 : 0
+  count = var.network_configuration != "custom" && !local.is_serverless ? 1 : 0
 
   statement {
     sid    = "Grant access to Workspace Root Bucket"
@@ -106,7 +106,7 @@ data "aws_iam_policy_document" "s3_vpc_endpoint_policy" {
   }
 
   statement {
-    sid    = "Grant access to Unity Catalog Workspace Catalog Bucket"
+    sid    = "Grant access to Unity Catalog Workspace Catalog Buckets"
     effect = "Allow"
     actions = [
       "s3:GetObject",
@@ -122,10 +122,14 @@ data "aws_iam_policy_document" "s3_vpc_endpoint_policy" {
       identifiers = ["*"]
     }
 
-    resources = [
-      "arn:${local.computed_aws_partition}:s3:::${var.resource_prefix}-catalog-${module.databricks_mws_workspace.workspace_id}/*",
-      "arn:${local.computed_aws_partition}:s3:::${var.resource_prefix}-catalog-${module.databricks_mws_workspace.workspace_id}"
-    ]
+    resources = concat(
+      [
+        "arn:${local.computed_aws_partition}:s3:::${var.resource_prefix}-catalog-${module.databricks_mws_workspace.workspace_id}/*",
+        "arn:${local.computed_aws_partition}:s3:::${var.resource_prefix}-catalog-${module.databricks_mws_workspace.workspace_id}"
+      ],
+      [for s in var.vpc_additional_s3_buckets : "arn:${local.computed_aws_partition}:s3:::${s}/*"],
+      [for s in var.vpc_additional_s3_buckets : "arn:${local.computed_aws_partition}:s3:::${s}"]
+    )
 
     condition {
       test     = "StringEquals"
@@ -251,7 +255,7 @@ data "aws_iam_policy_document" "s3_vpc_endpoint_policy" {
 
 # Restrictive STS endpoint policy:
 data "aws_iam_policy_document" "sts_vpc_endpoint_policy" {
-  count = var.network_configuration != "custom" ? 1 : 0
+  count = var.network_configuration != "custom" && !local.is_serverless ? 1 : 0
 
   statement {
     actions = [
@@ -291,7 +295,7 @@ data "aws_iam_policy_document" "sts_vpc_endpoint_policy" {
 
 # Restrictive Kinesis endpoint policy:
 data "aws_iam_policy_document" "kinesis_vpc_endpoint_policy" {
-  count = var.network_configuration != "custom" ? 1 : 0
+  count = var.network_configuration != "custom" && !local.is_serverless ? 1 : 0
   statement {
     actions = [
       "kinesis:PutRecord",
@@ -310,7 +314,7 @@ data "aws_iam_policy_document" "kinesis_vpc_endpoint_policy" {
 
 # VPC endpoint creation - Skipped in custom operation mode
 module "vpc_endpoints" {
-  count = var.network_configuration != "custom" ? 1 : 0
+  count = var.network_configuration != "custom" && !local.is_serverless ? 1 : 0
 
   source  = "terraform-aws-modules/vpc/aws//modules/vpc-endpoints"
   version = "3.11.0"
@@ -352,25 +356,36 @@ module "vpc_endpoints" {
   }
 }
 
+# Preserve state across rename: backend_rest -> general_access, backend_relay -> scc_tunnel_dataplane_relay_access
+moved {
+  from = aws_vpc_endpoint.backend_rest
+  to   = aws_vpc_endpoint.general_access
+}
+
+moved {
+  from = aws_vpc_endpoint.backend_relay
+  to   = aws_vpc_endpoint.scc_tunnel_dataplane_relay_access
+}
+
 # Databricks REST endpoint - skipped in custom operation mode
-resource "aws_vpc_endpoint" "backend_rest" {
-  count = var.network_configuration != "custom" ? 1 : 0
+resource "aws_vpc_endpoint" "general_access" {
+  count = var.network_configuration != "custom" && !local.is_serverless ? 1 : 0
 
   vpc_id              = module.vpc[0].vpc_id
-  service_name        = var.databricks_gov_shard == "dod" ? var.workspace_config[var.region].secondary_endpoint : var.workspace_config[var.region].primary_endpoint
+  service_name        = var.databricks_gov_shard == "dod" ? var.general_access_config[var.region].secondary_endpoint : var.general_access_config[var.region].primary_endpoint
   vpc_endpoint_type   = "Interface"
   security_group_ids  = [aws_security_group.privatelink[0].id]
   subnet_ids          = module.vpc[0].intra_subnets
   private_dns_enabled = true
   tags = {
-    Name    = "${var.resource_prefix}-databricks-backend-rest"
+    Name    = "${var.resource_prefix}-databricks-general-access"
     Project = var.resource_prefix
   }
 }
 
 # Databricks SCC endpoint - skipped in custom operation mode
-resource "aws_vpc_endpoint" "backend_relay" {
-  count = var.network_configuration != "custom" ? 1 : 0
+resource "aws_vpc_endpoint" "scc_tunnel_dataplane_relay_access" {
+  count = var.network_configuration != "custom" && !local.is_serverless ? 1 : 0
 
   vpc_id              = module.vpc[0].vpc_id
   service_name        = var.databricks_gov_shard == "dod" ? var.scc_relay_config[var.region].secondary_endpoint : var.scc_relay_config[var.region].primary_endpoint
@@ -379,7 +394,38 @@ resource "aws_vpc_endpoint" "backend_relay" {
   subnet_ids          = module.vpc[0].intra_subnets
   private_dns_enabled = true
   tags = {
-    Name    = "${var.resource_prefix}-databricks-backend-relay"
+    Name    = "${var.resource_prefix}-databricks-dataplane-relay"
+    Project = var.resource_prefix
+  }
+}
+
+# Look up AZ IDs for intra subnets to filter for service-direct limited AZ regions
+data "aws_subnet" "intra" {
+  count = var.network_configuration != "custom" && !local.is_serverless ? length(module.vpc[0].intra_subnets) : 0
+  id    = module.vpc[0].intra_subnets[count.index]
+}
+
+locals {
+  service_direct_subnets = var.network_configuration != "custom" && !local.is_serverless && contains(keys(var.service_direct_config), var.region) ? (
+    contains(keys(var.service_direct_limited_az_regions), var.region) ? [
+      for s in data.aws_subnet.intra : s.id
+      if contains(var.service_direct_limited_az_regions[var.region], s.availability_zone_id)
+    ] : module.vpc[0].intra_subnets
+  ) : []
+}
+
+# Databricks Service Direct endpoint - opt-in via var.create_service_direct_vpce, skipped in custom operation mode and unavailable in GovCloud
+resource "aws_vpc_endpoint" "service_direct" {
+  count = var.create_service_direct_vpce && var.network_configuration != "custom" && !local.is_serverless && contains(keys(var.service_direct_config), var.region) ? 1 : 0
+
+  vpc_id              = module.vpc[0].vpc_id
+  service_name        = var.service_direct_config[var.region].primary_endpoint
+  vpc_endpoint_type   = "Interface"
+  security_group_ids  = [aws_security_group.privatelink[0].id]
+  subnet_ids          = local.service_direct_subnets
+  private_dns_enabled = true
+  tags = {
+    Name    = "${var.resource_prefix}-databricks-service-direct"
     Project = var.resource_prefix
   }
 }
