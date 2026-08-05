@@ -151,6 +151,12 @@ variable "custom_sg_id" {
   default     = null
 }
 
+variable "custom_tags" {
+  description = "Additional tags applied to all AWS resources via provider default_tags, and to the classic compute cluster."
+  type        = map(string)
+  default     = {}
+}
+
 variable "custom_vpc_id" {
   description = "Custom VPC ID"
   type        = string

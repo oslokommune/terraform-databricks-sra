@@ -247,6 +247,7 @@ module "cluster_configuration" {
   enable_compliance_security_profile = var.enable_compliance_security_profile
   resource_prefix                    = var.resource_prefix
   region                             = var.region
+  custom_tags                        = var.custom_tags
 
   depends_on = [module.databricks_mws_workspace]
 }

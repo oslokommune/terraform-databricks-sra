@@ -16,7 +16,10 @@ resource "databricks_cluster" "example" {
   kind                    = "CLASSIC_PREVIEW"
 
   # Custom Tags
-  custom_tags = {
-    "SRA" = var.resource_prefix
-  }
+  custom_tags = merge(
+    {
+      "SRA" = var.resource_prefix
+    },
+    var.custom_tags
+  )
 }
