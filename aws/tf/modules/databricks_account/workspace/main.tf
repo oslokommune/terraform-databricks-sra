@@ -52,8 +52,12 @@ resource "databricks_mws_vpc_endpoint" "general_access" {
   count               = var.general_access_mws_vpce_id == null && !local.is_serverless ? 1 : 0
   account_id          = var.databricks_account_id
   aws_vpc_endpoint_id = var.general_access
-  vpc_endpoint_name   = "${var.resource_prefix}-vpce-general-access-${var.vpc_id}"
-  region              = var.region
+  # Fork divergence: keep the pre-rename endpoint name. vpc_endpoint_name is
+  # immutable, so adopting upstream's "-vpce-general-access-" name would force
+  # replacement of the registration on every existing workspace, which the
+  # Databricks API rejects while it is attached to a network configuration.
+  vpc_endpoint_name = "${var.resource_prefix}-vpce-backend-${var.vpc_id}"
+  region            = var.region
 }
 
 # SCC Tunnel Dataplane Relay Access VPC Endpoint Configuration
@@ -61,8 +65,9 @@ resource "databricks_mws_vpc_endpoint" "scc_tunnel_dataplane_relay_access" {
   count               = var.scc_relay_mws_vpce_id == null && !local.is_serverless ? 1 : 0
   account_id          = var.databricks_account_id
   aws_vpc_endpoint_id = var.scc_tunnel_dataplane_relay_access
-  vpc_endpoint_name   = "${var.resource_prefix}-vpce-dataplane-relay-access-${var.vpc_id}"
-  region              = var.region
+  # Fork divergence: keep the pre-rename endpoint name (see general_access above).
+  vpc_endpoint_name = "${var.resource_prefix}-vpce-relay-${var.vpc_id}"
+  region            = var.region
 }
 
 # Service Direct VPC Endpoint Configuration
