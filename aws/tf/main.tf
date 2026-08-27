@@ -93,7 +93,7 @@ module "databricks_mws_workspace" {
   network_connectivity_configuration_id = module.network_connectivity_configuration.ncc_id
   network_policy_id                     = module.network_policy.network_policy_id
 
-  depends_on = [module.unity_catalog_metastore_creation, module.network_connectivity_configuration, module.network_policy, module.disable_legacy_features]
+  depends_on = [aws_iam_role_policy.cross_account, module.unity_catalog_metastore_creation, module.network_connectivity_configuration, module.network_policy, module.disable_legacy_features]
 }
 
 # Wait for the newly created workspace to become fully available. Workspace-level settings applied
