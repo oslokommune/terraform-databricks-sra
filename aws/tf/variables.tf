@@ -593,6 +593,17 @@ variable "serverless_private_endpoint_rules" {
   default = []
 }
 
+variable "existing_network_connectivity_config_id" {
+  description = "ID of an existing network connectivity configuration to bind the workspace to instead of creating one, e.g. a shared account-level NCC (Databricks allows 10 NCCs per account per region). Leave null to create a workspace-specific NCC. Cannot be combined with serverless_private_endpoint_rules: rules belong to the stack that owns the NCC."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.existing_network_connectivity_config_id == null || length(var.serverless_private_endpoint_rules) == 0
+    error_message = "serverless_private_endpoint_rules cannot be set together with existing_network_connectivity_config_id. Private endpoint rules must be managed by the stack that owns the NCC."
+  }
+}
+
 # Service Direct PrivateLink Endpoint configuration
 # This variable allows mapping regions to the service-direct endpoint properties:
 # - primary_endpoint: The main endpoint service name (required)

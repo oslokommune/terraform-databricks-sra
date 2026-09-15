@@ -14,8 +14,11 @@ module "unity_catalog_metastore_creation" {
   custom_metastore_name = var.custom_metastore_name
 }
 
-# Create Network Connectivity Connection Object
+# Create Network Connectivity Connection Object, unless the workspace binds to an existing one.
+# Databricks allows 10 NCCs per account per region, so workspaces without private endpoint rules
+# can share an account-level NCC by setting existing_network_connectivity_config_id.
 module "network_connectivity_configuration" {
+  count  = var.existing_network_connectivity_config_id == null ? 1 : 0
   source = "./modules/databricks_account/network_connectivity_configuration"
   providers = {
     databricks = databricks.mws
@@ -24,6 +27,12 @@ module "network_connectivity_configuration" {
   private_endpoint_rules = var.serverless_private_endpoint_rules
   region                 = var.region
   resource_prefix        = var.resource_prefix
+}
+
+# Preserve state across the count addition so existing workspaces keep their NCC
+moved {
+  from = module.network_connectivity_configuration
+  to   = module.network_connectivity_configuration[0]
 }
 
 # Create a Network Policy
@@ -90,7 +99,7 @@ module "databricks_mws_workspace" {
   workspace_storage_key_alias = local.is_serverless ? null : aws_kms_alias.workspace_storage_key_alias[0].name
 
   # Network Connectivity Configuration and Network Policy
-  network_connectivity_configuration_id = module.network_connectivity_configuration.ncc_id
+  network_connectivity_configuration_id = coalesce(var.existing_network_connectivity_config_id, one(module.network_connectivity_configuration[*].ncc_id))
   network_policy_id                     = module.network_policy.network_policy_id
 
   depends_on = [aws_iam_role_policy.cross_account, module.unity_catalog_metastore_creation, module.network_connectivity_configuration, module.network_policy, module.disable_legacy_features]
