@@ -160,7 +160,7 @@ module "log_delivery" {
 # Creates a Workspace Isolated Catalog (skipped for serverless-only workspaces, which use the
 # auto-created workspace catalog backed by Databricks default storage)
 module "unity_catalog_catalog_creation" {
-  count  = local.is_serverless ? 0 : 1
+  count  = local.is_serverless || !var.create_workspace_catalog ? 0 : 1
   source = "./modules/databricks_workspace/unity_catalog_catalog_creation"
   providers = {
     databricks = databricks.created_workspace

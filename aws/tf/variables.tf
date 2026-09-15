@@ -815,6 +815,11 @@ variable "workspace_display_name" {
   nullable    = true
 }
 
+variable "create_workspace_catalog" {
+  type    = bool
+  default = true
+}
+
 # Combined locals block for all computed values, ordered alphabetically
 locals {
   # Compute the correct AWS partition for assume role policies
