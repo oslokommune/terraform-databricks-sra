@@ -143,6 +143,7 @@ resource "databricks_mws_workspaces" "workspace" {
   managed_services_customer_managed_key_id = local.is_serverless ? null : databricks_mws_customer_managed_keys.managed_services[0].customer_managed_key_id
   storage_customer_managed_key_id          = local.is_serverless ? null : databricks_mws_customer_managed_keys.workspace_storage[0].customer_managed_key_id
   pricing_tier                             = "ENTERPRISE"
+  custom_tags                              = length(var.custom_tags) > 0 ? var.custom_tags : null
 
   lifecycle {
     precondition {

@@ -130,6 +130,12 @@ variable "workspace_storage_key_alias" {
   type        = string
 }
 
+variable "custom_tags" {
+  description = "Custom tags attached to the workspace. Databricks applies them automatically to all classic compute in the workspace (clusters, job clusters, SQL warehouses), on top of any cluster-level tags. Tags can be changed later but never fully removed."
+  type        = map(string)
+  default     = {}
+}
+
 variable "workspace_display_name" {
   description = "Optional human-readable name for the workspace as shown in the Databricks UI. If null, falls back to resource_prefix."
   type        = string
