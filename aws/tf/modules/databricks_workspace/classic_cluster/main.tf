@@ -16,10 +16,15 @@ resource "databricks_cluster" "example" {
   kind                    = "CLASSIC_PREVIEW"
 
   # Custom Tags
+  # Databricks adds ResourceClass = SingleNode itself because is_single_node is true.
+  # Set it here as well, or every plan tries to remove it.
   custom_tags = merge(
     {
       "SRA" = var.resource_prefix
     },
-    var.custom_tags
+    var.custom_tags,
+    {
+      "ResourceClass" = "SingleNode"
+    }
   )
 }
