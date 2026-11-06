@@ -6,3 +6,8 @@ output "catalog_name" {
   description = "Name of the catalog created for the workspace. Null when create_workspace_catalog is false."
   value       = one(module.unity_catalog_catalog_creation[*].catalog_name)
 }
+
+output "workspace_id" {
+  description = "ID of the Databricks workspace."
+  value       = module.databricks_mws_workspace.workspace_id
+}
