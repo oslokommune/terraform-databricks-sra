@@ -152,7 +152,7 @@ variable "custom_sg_id" {
 }
 
 variable "custom_tags" {
-  description = "Additional tags applied to all AWS resources via provider default_tags, and to the classic compute cluster."
+  description = "Additional tags applied to all AWS resources via provider default_tags, to the classic compute cluster, and to the Databricks workspace itself (which propagates them to all classic compute in the workspace)."
   type        = map(string)
   default     = {}
 }

@@ -73,6 +73,7 @@ module "databricks_mws_workspace" {
   deployment_name        = var.deployment_name
   workspace_display_name = var.workspace_display_name
   compute_mode           = var.compute_mode
+  custom_tags            = var.custom_tags
 
   # Network Configuration (skipped for serverless-only workspaces)
   vpc_id                            = local.is_serverless ? null : (var.custom_vpc_id != null ? var.custom_vpc_id : module.vpc[0].vpc_id)
