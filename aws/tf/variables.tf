@@ -820,6 +820,12 @@ variable "create_workspace_catalog" {
   default = true
 }
 
+variable "create_example_cluster" {
+  description = "Create the example single-node cluster (\"Standard Classic Compute Plane Cluster\"). Never created for serverless-only workspaces."
+  type        = bool
+  default     = true
+}
+
 # Combined locals block for all computed values, ordered alphabetically
 locals {
   # Compute the correct AWS partition for assume role policies
