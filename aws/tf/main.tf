@@ -246,9 +246,9 @@ module "compliance_security_profile" {
   depends_on = [time_sleep.wait_for_workspace]
 }
 
-# Create Cluster (skipped for serverless-only workspaces)
+# Create Cluster (skipped for serverless-only workspaces or when create_example_cluster = false)
 module "cluster_configuration" {
-  count  = local.is_serverless ? 0 : 1
+  count  = local.is_serverless || !var.create_example_cluster ? 0 : 1
   source = "./modules/databricks_workspace/classic_cluster"
   providers = {
     databricks = databricks.created_workspace
