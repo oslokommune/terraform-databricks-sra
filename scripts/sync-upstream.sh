@@ -41,10 +41,22 @@ echo
 
 patch=$(mktemp)
 trap 'rm -f "$patch"' EXIT
-git diff "$LAST" "$NEW" -- "${PATHS[@]}" > "$patch"
+# `--binary` is required: without it `git apply` cannot apply changes to binary
+# files (e.g. the images under `aws/img`) and rejects the patch as a whole.
+git diff --binary "$LAST" "$NEW" -- "${PATHS[@]}" > "$patch"
 
 if [ -s "$patch" ]; then
-  git apply --3way "$patch" || true
+  if ! git apply --3way "$patch"; then
+    # `git apply` exits non-zero both when it leaves conflict markers and when
+    # it rejects the patch. A rejected patch is not applied at all, so the tree
+    # is still clean; stop without recording the new ref, or the fork would
+    # claim to be in sync with changes it never received.
+    if [ -z "$(git status --porcelain)" ]; then
+      echo "git apply rejected the patch (see errors above); nothing was applied" >&2
+      echo "and $REF_FILE is unchanged." >&2
+      exit 1
+    fi
+  fi
 else
   echo "No changes in synced paths."
 fi
