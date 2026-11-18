@@ -2,12 +2,13 @@
 
 > **Note (oslokommune fork):** This is a partial fork of
 > [databricks/terraform-databricks-sra](https://github.com/databricks/terraform-databricks-sra).
-> We only maintain the AWS implementation (`aws/`) plus `common/` and `docs/`;
-> `azure/`, `gcp/`, and upstream's GitHub Actions workflows have been removed.
-> To pull in upstream changes for the paths we keep, run
-> `scripts/sync-upstream.sh` — it syncs from the commit recorded in
-> `.upstream-ref` and stages the result for review. Do not merge
-> `upstream/main` directly; that would resurrect the deleted directories.
+>
+> We only maintain the AWS implementation `aws` plus `common`. `azure`, `gcp`,
+> `docs`, and upstream's GitHub Actions workflows have been removed. To pull in
+> upstream changes for the paths we keep, run `scripts/sync-upstream.sh` — it
+> syncs from the commit recorded in `.upstream-ref` and stages the result for
+> review. Do not merge `upstream/main` directly; that would resurrect the
+> deleted directories.
 
 <p align="center">
   <img src="https://i.postimg.cc/hP90xPqh/SRA-Screenshot.png" />

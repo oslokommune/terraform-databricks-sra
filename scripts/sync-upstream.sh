@@ -2,9 +2,10 @@
 # Sync the paths this fork maintains from upstream
 # (databricks/terraform-databricks-sra).
 #
-# This fork only keeps the AWS implementation plus common/ and docs/;
-# azure/, gcp/, and upstream's GitHub Actions workflows are intentionally
-# deleted and must never be synced back in.
+# This fork only keeps the AWS implementation plus `common`.
+#
+# `azure`, `gcp`, `docs`, and upstream's GitHub Actions workflows are
+# intentionally deleted and must never be synced back in.
 #
 # The last synced upstream commit is recorded in .upstream-ref. On each run
 # the script fetches upstream, shows the relevant commits since last sync,
@@ -15,7 +16,7 @@ set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
-PATHS=(aws common docs .gitignore LICENSE NOTICE README.md SECURITY.md CONTRIBUTING.md)
+PATHS=(aws common .gitignore LICENSE NOTICE README.md SECURITY.md CONTRIBUTING.md)
 REF_FILE=.upstream-ref
 UPSTREAM_URL=https://github.com/databricks/terraform-databricks-sra.git
 
