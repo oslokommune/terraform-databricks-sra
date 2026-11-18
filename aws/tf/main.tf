@@ -103,7 +103,9 @@ module "databricks_mws_workspace" {
   network_connectivity_configuration_id = coalesce(var.existing_network_connectivity_config_id, one(module.network_connectivity_configuration[*].ncc_id))
   network_policy_id                     = module.network_policy.network_policy_id
 
-  depends_on = [aws_iam_role_policy.cross_account, module.unity_catalog_metastore_creation, module.network_connectivity_configuration, module.network_policy, module.disable_legacy_features]
+  # Databricks checks its access to the root bucket when the workspace is created, so the workspace
+  # must wait for the bucket policy.
+  depends_on = [aws_iam_role_policy.cross_account, aws_s3_bucket_policy.root_bucket_policy, aws_s3_bucket_server_side_encryption_configuration.root_storage_bucket, module.unity_catalog_metastore_creation, module.network_connectivity_configuration, module.network_policy, module.disable_legacy_features]
 }
 
 # Wait for the newly created workspace to become fully available. Workspace-level settings applied
