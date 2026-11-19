@@ -806,6 +806,7 @@ variable "vpc_cidr_range" {
 variable "vpc_additional_s3_buckets" {
   description = "List of additional S3 resources to allow access to in the VPC."
   type        = list(string)
+  default     = []
 }
 
 variable "workspace_display_name" {
