@@ -40,23 +40,43 @@ resource "databricks_account_network_policy" "restrictive_network_policy" {
     }
   }
 
-  # Optional IP-based ingress restriction. When context_based_ingress_ip_acl is non-empty, public access
-  # to the workspace is restricted to the listed IPs/CIDRs; otherwise the ingress block is omitted
-  # entirely: any ingress configuration (in particular private_access) requires the account-level
-  # feature "CBI Policy Private Access", and accounts without it reject the update with
+  # Fork divergence: the ingress block is omitted entirely unless an ingress restriction is configured
+  # (context_based_ingress_ip_acl or cross_workspace_ingress_allowed_workspace_ids). Any ingress
+  # configuration (in particular private_access) requires the account-level feature "CBI Policy Private
+  # Access", and accounts without it reject the update with
   # "Feature `CBI Policy Private Access` has not been enabled for account ...".
-  # NOTE: Verify that all IPs are correct before enabling this feature to prevent a lockout scenario.
-  ingress = length(var.context_based_ingress_ip_acl) > 0 ? {
+  # The block itself is kept identical to upstream.
+  ingress = length(var.context_based_ingress_ip_acl) > 0 || length(var.cross_workspace_ingress_allowed_workspace_ids) > 0 ? {
+    # Cross-workspace access is now required on the account network policy. Default to RESTRICTED_ACCESS so no
+    # other workspaces can reach this one. When cross_workspace_ingress_allowed_workspace_ids is non-empty, those
+    # source workspaces are allow-listed; otherwise no cross-workspace ingress is permitted.
+    # NOTE: Not yet supported in GovCloud (like private_access above), so leave it unset in us-gov-west-1.
+    cross_workspace_access = var.region == "us-gov-west-1" ? null : {
+      restriction_mode = "RESTRICTED_ACCESS"
+      allow_rules = length(var.cross_workspace_ingress_allowed_workspace_ids) > 0 ? [
+        {
+          label = "${var.resource_prefix}-xws-allow"
+          origin = {
+            selected_workspaces = {
+              workspace_ids = var.cross_workspace_ingress_allowed_workspace_ids
+            }
+          }
+        }
+      ] : []
+    }
     # Explicitly allow private access from all VPC endpoints registered in the account, matching the
-    # private access settings posture (private_access_level = "ACCOUNT"). The API populates
+    # private access settings posture (private_access_level = "ACCOUNT"). The API now populates
     # private_access server-side when unset, which the provider reports as an inconsistent result after
     # apply ("was null, but now ..."); setting it explicitly avoids that error.
-    private_access = {
+    private_access = var.region == "us-gov-west-1" ? null : {
       restriction_mode = "ALLOW_ALL_REGISTERED_ENDPOINTS"
     }
+    # Optional IP-based ingress restriction. When context_based_ingress_ip_acl is non-empty, public access
+    # to the workspace is restricted to the listed IPs/CIDRs; otherwise public access is left unrestricted.
+    # NOTE: Verify that all IPs are correct before enabling this feature to prevent a lockout scenario.
     public_access = {
-      restriction_mode = "RESTRICTED_ACCESS"
-      allow_rules = [
+      restriction_mode = length(var.context_based_ingress_ip_acl) > 0 ? "RESTRICTED_ACCESS" : "FULL_ACCESS"
+      allow_rules = length(var.context_based_ingress_ip_acl) > 0 ? [
         {
           label = "${var.resource_prefix}-ingress-allow"
           origin = {
@@ -65,7 +85,7 @@ resource "databricks_account_network_policy" "restrictive_network_policy" {
             }
           }
         }
-      ]
+      ] : []
     }
   } : null
 }
