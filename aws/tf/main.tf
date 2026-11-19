@@ -42,10 +42,12 @@ module "network_policy" {
     databricks = databricks.mws
   }
 
-  context_based_ingress_ip_acl  = var.context_based_ingress_ip_acl
-  databricks_account_id         = var.databricks_account_id
-  enable_security_analysis_tool = var.enable_security_analysis_tool
-  resource_prefix               = var.resource_prefix
+  context_based_ingress_ip_acl                  = var.context_based_ingress_ip_acl
+  cross_workspace_ingress_allowed_workspace_ids = var.cross_workspace_ingress_allowed_workspace_ids
+  databricks_account_id                         = var.databricks_account_id
+  enable_security_analysis_tool                 = var.enable_security_analysis_tool
+  region                                        = var.region
+  resource_prefix                               = var.resource_prefix
 }
 
 # Disable legacy features like Hive Metastore, DBFS, and no-isolation shared clusters for newly created workspaces at the account level.
@@ -143,7 +145,7 @@ module "user_assignment" {
 }
 
 # Audit Log Delivery (skipped for serverless-only workspaces, which have no customer S3 bucket;
-# monitor audit events via system tables instead - see the system_tables_audit_log customization)
+# monitor audit events via system tables instead)
 module "log_delivery" {
   count  = var.audit_log_delivery_exists || local.is_serverless ? 0 : 1
   source = "./modules/databricks_account/audit_log_delivery"
@@ -160,15 +162,18 @@ module "log_delivery" {
 # Databricks Workspace Modules
 # =============================================================================
 
-# Creates a Workspace Isolated Catalog (skipped for serverless-only workspaces, which use the
-# auto-created workspace catalog backed by Databricks default storage)
+# Creates a Workspace Isolated Catalog. In SERVERLESS mode the catalog uses Databricks default storage
+# and the customer-managed AWS storage (KMS, IAM, S3, storage credential, external location) is skipped.
+# Fork divergence: the catalog is optional (create_workspace_catalog), so the module call keeps its
+# count; upstream runs the module unconditionally.
 module "unity_catalog_catalog_creation" {
-  count  = local.is_serverless || !var.create_workspace_catalog ? 0 : 1
+  count  = var.create_workspace_catalog ? 1 : 0
   source = "./modules/databricks_workspace/unity_catalog_catalog_creation"
   providers = {
     databricks = databricks.created_workspace
   }
 
+  is_serverless                = local.is_serverless
   aws_account_id               = var.aws_account_id
   aws_iam_partition            = local.computed_aws_partition
   aws_assume_partition         = local.assume_role_partition
@@ -270,7 +275,7 @@ module "cluster_configuration" {
 # =============================================================================
 
 module "security_analysis_tool" {
-  count  = var.enable_security_analysis_tool && var.region != "us-gov-west-1" ? 1 : 0
+  count  = var.enable_security_analysis_tool ? 1 : 0
   source = "./modules/security_analysis_tool"
 
   providers = {
@@ -285,8 +290,7 @@ module "security_analysis_tool" {
   use_sp_auth = true
 
   # Databricks Variables
-  # For serverless-only workspaces, SAT uses the auto-created workspace catalog (named after the workspace).
-  analysis_schema_name = replace(local.is_serverless ? "${coalesce(var.workspace_display_name, var.resource_prefix)}.SAT" : "${var.resource_prefix}-catalog-${module.databricks_mws_workspace.workspace_id}.SAT", "-", "_")
+  analysis_schema_name = replace("${var.resource_prefix}-catalog-${module.databricks_mws_workspace.workspace_id}.SAT", "-", "_")
   workspace_id         = module.databricks_mws_workspace.workspace_id
 
   # Configuration Variables
@@ -313,6 +317,9 @@ moved {
   to   = module.cluster_configuration[0]
 }
 
+# Fork divergence: upstream dropped the count on the catalog module and moves its state from [0] to
+# the unindexed address. The fork keeps the count (see create_workspace_catalog), so it keeps the
+# original move to the indexed address instead.
 moved {
   from = module.unity_catalog_catalog_creation
   to   = module.unity_catalog_catalog_creation[0]

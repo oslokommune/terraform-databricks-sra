@@ -96,6 +96,12 @@ variable "create_service_direct_vpce" {
   default     = false
 }
 
+variable "cross_workspace_ingress_allowed_workspace_ids" {
+  description = "Optional list of source workspace IDs allowed to reach this workspace over the account network policy's cross-workspace ingress. Cross-workspace access defaults to RESTRICTED_ACCESS; leave empty to permit no cross-workspace ingress."
+  type        = list(number)
+  default     = []
+}
+
 variable "custom_general_access_mws_vpce_id" {
   description = "Pre-registered Databricks MWS VPC Endpoint ID for General Access. If set, the AWS VPC endpoint is not re-registered with Databricks; this ID is wired directly into the workspace network configuration."
   type        = string
@@ -267,7 +273,7 @@ variable "general_access_config" {
       primary_endpoint = "com.amazonaws.vpce.ap-southeast-2.vpce-svc-0b87155ddd6954974"
     }
     "ap-southeast-3" = {
-      primary_endpoint = "com.amazonaws.vpce.ap-southeast-3.vpce-svc-07a698e7e9ccfd04a"
+      primary_endpoint = "com.amazonaws.vpce.ap-southeast-3.vpce-svc-0fec4092997affd53"
     }
     "ca-central-1" = {
       primary_endpoint = "com.amazonaws.vpce.ca-central-1.vpce-svc-0205f197ec0e28d65"
